@@ -1,0 +1,53 @@
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
+
+dotenv.config();
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(express.json());
+
+// For local development if DB isn't available, we'll use a mocked data approach or just check connection.
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log('MongoDB Error:', err));
+
+const imageSchema = new mongoose.Schema({
+  title: String,
+  imageUrl: String,
+  author: String,
+  likes: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
+});
+
+const Image = mongoose.model('Image', imageSchema);
+
+app.get('/api/images', async (req, res) => {
+  try {
+    const images = await Image.find().sort({ createdAt: -1 });
+    res.json(images);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/images', async (req, res) => {
+  try {
+    const { title, imageUrl, author } = req.body;
+    const newImage = new Image({ title, imageUrl, author });
+    await newImage.save();
+    res.status(201).json(newImage);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
