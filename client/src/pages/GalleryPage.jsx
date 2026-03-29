@@ -10,41 +10,87 @@ const GalleryPage = () => {
   const { id } = useParams();
   const [image, setImage] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [isProtected, setIsProtected] = useState(false);
+  const [passKey, setPassKey] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     const fetchImage = async () => {
       try {
         const response = await axios.get(`http://localhost:5000/api/gallery/${id}`);
-        setImage(response.data);
+        if (response.data.protected) {
+           setIsProtected(true);
+           setImage(response.data);
+        } else {
+           setImage(response.data);
+        }
       } catch (err) {
         console.error('System Error:', err);
       } finally {
-        // Simulate a slightly longer loading for the "magical" landing feel
         setTimeout(() => setLoading(false), 2000);
       }
     };
     fetchImage();
   }, [id]);
 
+  const handleVerify = async () => {
+     setVerifying(true);
+     try {
+        const response = await axios.post(`http://localhost:5000/api/gallery/${id}/verify`, { password: passKey });
+        setImage(response.data);
+        setIsProtected(false);
+     } catch (err) {
+        alert('AUTH_FAILED: Invalid Pass Key');
+     } finally {
+        setVerifying(false);
+     }
+  };
+
   if (loading) {
+    // ... same loading code
     return (
-      <div style={{ 
-        height: '100vh', 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        background: '#050505',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Neon Glow Background Effects */}
-        <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '40%', height: '40%', background: 'radial-gradient(circle, rgba(0, 243, 255, 0.1) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-        <div style={{ position: 'absolute', bottom: '-10%', right: '-10%', width: '40%', height: '40%', background: 'radial-gradient(circle, rgba(157, 0, 255, 0.1) 0%, transparent 70%)', filter: 'blur(50px)' }} />
-        
-        <PixelLoader text="RETRIEVING_GALLERY_DATA" />
+      <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#050505' }}>
+        <PixelLoader text="INITIALIZING_SECURE_TUNNEL" />
       </div>
     );
+  }
+
+  if (isProtected) {
+     return (
+        <div style={{ height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#050505', padding: '2rem' }}>
+           <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: 'radial-gradient(circle, rgba(157, 0, 255, 0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
+           <motion.div 
+             initial={{ scale: 0.9, opacity: 0 }}
+             animate={{ scale: 1, opacity: 1 }}
+             className="glass-card" 
+             style={{ width: '100%', maxWidth: '450px', padding: '3rem', textAlign: 'center' }}
+           >
+              <div style={{ color: 'var(--neon-purple)', marginBottom: '2rem' }}>
+                 <ShieldCheck size={48} />
+              </div>
+              <h2 style={{ fontFamily: 'var(--pixel-font)', fontSize: '1.2rem', marginBottom: '1rem', letterSpacing: '4px' }}>DATA_LOCKED</h2>
+              <p style={{ color: '#555', fontSize: '0.8rem', marginBottom: '2.5rem' }}>This gallery is protected by an encryption key.</p>
+              
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '2rem' }}>
+                <input 
+                  type="password" 
+                  placeholder="ENTER_PASS_KEY" 
+                  value={passKey}
+                  onChange={(e) => setPassKey(e.target.value)}
+                  style={{ width: '100%', background: 'none', border: 'none', color: 'white', padding: '1.2rem', outline: 'none', textAlign: 'center', fontFamily: 'var(--pixel-font)', fontSize: '0.9rem' }}
+                />
+              </div>
+
+              <RippleButton onClick={handleVerify} disabled={verifying} style={{ width: '100%' }}>
+                 {verifying ? 'DECRYPTING...' : 'COMMAND: UNLOCK_DATA'}
+              </RippleButton>
+              
+              <div style={{ marginTop: '2rem' }}>
+                <Link to="/" style={{ color: '#333', fontSize: '0.65rem', textDecoration: 'none', fontFamily: 'var(--pixel-font)' }}>ABORT_MISSION</Link>
+              </div>
+           </motion.div>
+        </div>
+     );
   }
 
   if (!image) {
@@ -58,7 +104,7 @@ const GalleryPage = () => {
 
   return (
     <div style={{ minHeight: '100vh', background: '#050505', padding: '2rem', position: 'relative', overflow: 'hidden' }}>
-      {/* Background Ambience */}
+      {/* ... previous content ... */}
       <div style={{ position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', background: 'radial-gradient(circle at 50% 50%, rgba(0, 243, 255, 0.03) 0%, transparent 50%)', pointerEvents: 'none' }} />
       
       <nav style={{ maxWidth: '1200px', margin: '0 auto 4rem auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 10 }}>

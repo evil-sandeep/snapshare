@@ -9,13 +9,13 @@ import axios from 'axios';
 
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
+import bcrypt from 'bcrypt';
+import cron from 'node-cron';
+
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-app.use(cors());
-app.use(express.json());
 
 // Cloudinary Configuration
 cloudinary.config({
@@ -36,11 +36,6 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-// Database Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('MongoDB Error:', err));
-
 const imageSchema = new mongoose.Schema({
   title: String,
   imageUrl: String,
@@ -49,16 +44,46 @@ const imageSchema = new mongoose.Schema({
   likes: { type: Number, default: 0 },
   views: { type: Number, default: 0 },
   downloads: { type: Number, default: 0 },
+  password: { type: String, default: null }, // Hashed password
+  expiresAt: { type: Date, default: null },   // Expiry date
+  autoDelete: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
 const Image = mongoose.model('Image', imageSchema);
 
+// AUTO-DELETE CRON JOB (Runs every hour)
+cron.schedule('0 * * * *', async () => {
+  try {
+    const now = new Date();
+    const expired = await Image.find({ expiresAt: { $lte: now } });
+    
+    for (const img of expired) {
+       // Optional: Delete from Cloudinary here if needed
+       // await cloudinary.uploader.destroy(publicId);
+       await Image.findByIdAndDelete(img._id);
+       console.log(`DELETED_EXPIRED_DATA: ${img.uniqueId}`);
+    }
+  } catch (err) {
+    console.error('CRON_FAILURE:', err);
+  }
+});
+
+// Database Connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log('MongoDB Error:', err));
+
 // Existing image feed
 app.get('/api/images', async (req, res) => {
   try {
     const images = await Image.find().sort({ createdAt: -1 });
-    res.json(images);
+    // Don't leak passwords or expiry details on public feed
+    const sanitized = images.map(img => ({
+       ...img._doc,
+       hasPassword: !!img.password
+    }));
+    res.json(sanitized);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -67,19 +92,34 @@ app.get('/api/images', async (req, res) => {
 // REAL IMAGE UPLOAD ENTRANCE
 app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
   try {
-    const { title, author } = req.body;
+    const { title, author, password, expiryHours } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No image provided' });
 
     const uniqueId = Math.random().toString(36).substring(2, 10);
+    
+    let hashedPassword = null;
+    if (password) {
+       hashedPassword = await bcrypt.hash(password, 10);
+    }
+
+    let expiresAt = null;
+    if (expiryHours) {
+       expiresAt = new Date();
+       expiresAt.setHours(expiresAt.getHours() + parseInt(expiryHours));
+    }
+
     const newImage = new Image({
       title: title || 'UNTITLED_DRIVE',
       imageUrl: req.file.path,
       author: author || 'ANONYMOUS',
-      uniqueId: uniqueId
+      uniqueId: uniqueId,
+      password: hashedPassword,
+      expiresAt: expiresAt,
+      autoDelete: !!expiresAt
     });
 
     await newImage.save();
-    res.status(201).json(newImage);
+    res.status(201).json({ uniqueId: newImage.uniqueId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -93,9 +133,36 @@ app.get('/api/gallery/:id', async (req, res) => {
        { new: true }
     );
     if (!image) return res.status(404).json({ error: 'Gallery not found' });
+    
+    // Check if password protected
+    if (image.password) {
+       return res.json({ 
+          protected: true, 
+          uniqueId: image.uniqueId,
+          title: image.title 
+       });
+    }
+
     res.json(image);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// PASS_VERIFY_PROTOCOL
+app.post('/api/gallery/:id/verify', async (req, res) => {
+  try {
+     const { password } = req.body;
+     const image = await Image.findOne({ uniqueId: req.params.id });
+     
+     if (!image) return res.status(404).json({ error: 'DATA_VOID' });
+     
+     const isValid = await bcrypt.compare(password, image.password);
+     if (!isValid) return res.status(401).json({ error: 'AUTH_FAILED' });
+     
+     res.json(image);
+  } catch (err) {
+     res.status(500).json({ error: err.message });
   }
 });
 
