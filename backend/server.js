@@ -7,6 +7,8 @@ import { v2 as cloudinary } from 'cloudinary';
 import archiver from 'archiver';
 import axios from 'axios';
 
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+
 dotenv.config();
 
 const app = express();
@@ -15,7 +17,26 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// For local development if DB isn't available, we'll use a mocked data approach or just check connection.
+// Cloudinary Configuration
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Multer-Storage-Cloudinary Setup
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'snapshare',
+    allowed_formats: ['jpg', 'png', 'webp', 'jpeg'],
+    transformation: [{ width: 1200, crop: 'limit' }]
+  }
+});
+
+const upload = multer({ storage: storage });
+
+// Database Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log('MongoDB Error:', err));
@@ -31,6 +52,7 @@ const imageSchema = new mongoose.Schema({
 
 const Image = mongoose.model('Image', imageSchema);
 
+// Existing image feed
 app.get('/api/images', async (req, res) => {
   try {
     const images = await Image.find().sort({ createdAt: -1 });
@@ -40,11 +62,20 @@ app.get('/api/images', async (req, res) => {
   }
 });
 
-app.post('/api/images', async (req, res) => {
+// REAL IMAGE UPLOAD ENTRANCE
+app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
   try {
-    const { title, imageUrl, author } = req.body;
+    const { title, author } = req.body;
+    if (!req.file) return res.status(400).json({ error: 'No image provided' });
+
     const uniqueId = Math.random().toString(36).substring(2, 10);
-    const newImage = new Image({ title, imageUrl, author, uniqueId });
+    const newImage = new Image({
+      title: title || 'UNTITLED_DRIVE',
+      imageUrl: req.file.path, // This is the Cloudinary URL
+      author: author || 'ANONYMOUS',
+      uniqueId: uniqueId
+    });
+
     await newImage.save();
     res.status(201).json(newImage);
   } catch (err) {

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Upload, Camera, ImageIcon, Send } from 'lucide-react';
+import { X, Upload, Camera, ImageIcon, Send, FileCode } from 'lucide-react';
 import RippleButton from './RippleButton';
 import ShareGallery from './ShareGallery';
 import axios from 'axios';
@@ -10,23 +10,39 @@ const UploadModal = ({ isOpen, onClose }) => {
   const [uploadResult, setUploadResult] = useState(null);
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('ANONYMOUS');
-  const [imageUrl, setImageUrl] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const fileInputRef = useRef(null);
 
   if (!isOpen) return null;
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
   const handleUpload = async () => {
-    if (!imageUrl) return alert('Protocol Failure: Missing Image URL');
+    if (!selectedFile) return alert('Protocol Failure: No Image Selected');
     setUploading(true);
+
+    const formData = new FormData();
+    formData.append('image', selectedFile);
+    formData.append('title', title || 'UNTITLED_DRIVE');
+    formData.append('author', author);
+
     try {
-      const response = await axios.post('http://localhost:5000/api/images', {
-        title: title || 'UNTITLED_DRIVE',
-        imageUrl: imageUrl,
-        author: author
+      const response = await axios.post('http://localhost:5000/api/upload-gallery', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
       });
       setUploadResult(response.data);
     } catch (err) {
       console.error('System Error:', err);
-      alert('UPLOAD_SYNC_FAILURE');
+      alert('UPLOAD_SYNC_FAILURE: check server connection or Cloudinary config.');
     } finally {
       setUploading(false);
     }
@@ -35,7 +51,8 @@ const UploadModal = ({ isOpen, onClose }) => {
   const handleClose = () => {
     setUploadResult(null);
     setTitle('');
-    setImageUrl('');
+    setSelectedFile(null);
+    setPreviewUrl('');
     onClose();
   };
 
@@ -84,16 +101,7 @@ const UploadModal = ({ isOpen, onClose }) => {
 
               <div style={{ marginBottom: '1.5rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
-                    <input 
-                      type="text" 
-                      placeholder="IMAGE_URL_HTTPS://..." 
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
-                      style={{ width: '100%', background: 'none', border: 'none', color: 'white', padding: '1.2rem', outline: 'none', fontFamily: 'var(--pixel-font)', fontSize: '0.8rem' }}
-                    />
-                  </div>
-                  <div style={{ gridTemplateColumns: '1fr 1fr', display: 'grid', gap: '1rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                       <input 
                         type="text" 
@@ -116,10 +124,19 @@ const UploadModal = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept="image/*" 
+                style={{ display: 'none' }} 
+              />
+
               <div 
                  className="pixel-border" 
+                 onClick={() => fileInputRef.current?.click()}
                  style={{ 
-                   height: '180px', 
+                   height: '220px', 
                    background: 'rgba(255,255,255,0.01)', 
                    display: 'flex', 
                    flexDirection: 'column', 
@@ -127,32 +144,37 @@ const UploadModal = ({ isOpen, onClose }) => {
                    justifyContent: 'center',
                    borderRadius: '12px',
                    marginBottom: '2rem',
-                   border: '2px dashed rgba(255,255,255,0.05)',
-                   overflow: 'hidden'
+                   border: '2px dashed rgba(0, 243, 255, 0.2)',
+                   overflow: 'hidden',
+                   cursor: 'pointer',
+                   transition: '0.3s'
                  }}
               >
-                 {imageUrl ? (
-                   <img src={imageUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} onError={(e) => e.target.style.display = 'none'} />
+                 {previewUrl ? (
+                   <img src={previewUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                  ) : (
                     <>
                       <div style={{ color: 'var(--neon-cyan)', marginBottom: '1rem' }}>
-                        <ImageIcon size={40} />
+                        <Upload size={40} />
                       </div>
-                      <p style={{ color: '#555', fontSize: '0.7rem', fontFamily: 'var(--pixel-font)' }}>PREVIEW_MODAL_ACTIVE</p>
+                      <p style={{ color: '#888', fontSize: '0.7rem', fontFamily: 'var(--pixel-font)', textAlign: 'center' }}>
+                        SELECT_IMAGE_FILE <br/> 
+                        <span style={{ fontSize: '0.5rem', color: '#444' }}>SUPPORTED: JPG/PNG/WEBP</span>
+                      </p>
                     </>
                  )}
               </div>
 
               <RippleButton 
                 onClick={handleUpload} 
-                disabled={uploading || !imageUrl} 
-                style={{ width: '100%', opacity: (uploading || !imageUrl) ? 0.5 : 1 }}
+                disabled={uploading || !selectedFile} 
+                style={{ width: '100%', opacity: (uploading || !selectedFile) ? 0.5 : 1 }}
               >
-                 {uploading ? 'SYNCING...' : 'COMMAND: EXECUTE_UPLOAD'}
+                 {uploading ? 'UPLOADING_TO_CLOUD...' : 'COMMAND: EXECUTE_SYNC'}
               </RippleButton>
               
               <p style={{ marginTop: '2rem', fontSize: '0.6rem', color: '#333', textAlign: 'center', fontFamily: 'var(--pixel-font)' }}>
-                PROTOCOL: SH_SECURE_V4 // SNAP_SHARE_OS
+                PROTOCOL: SH_SECURE_V4 // CLOUD_STORAGE_ACTIVE
               </p>
             </div>
           )}
