@@ -22,6 +22,7 @@ const imageSchema = new mongoose.Schema({
   title: String,
   imageUrl: String,
   author: String,
+  uniqueId: { type: String, unique: true },
   likes: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
@@ -40,9 +41,20 @@ app.get('/api/images', async (req, res) => {
 app.post('/api/images', async (req, res) => {
   try {
     const { title, imageUrl, author } = req.body;
-    const newImage = new Image({ title, imageUrl, author });
+    const uniqueId = Math.random().toString(36).substring(2, 10);
+    const newImage = new Image({ title, imageUrl, author, uniqueId });
     await newImage.save();
     res.status(201).json(newImage);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/gallery/:id', async (req, res) => {
+  try {
+    const image = await Image.findOne({ uniqueId: req.params.id });
+    if (!image) return res.status(404).json({ error: 'Gallery not found' });
+    res.json(image);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

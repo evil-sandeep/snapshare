@@ -1,27 +1,29 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github } from 'lucide-react';
 import RippleButton from './components/RippleButton';
 import UploadModal from './components/UploadModal';
+import GalleryPage from './pages/GalleryPage';
+import axios from 'axios';
 
-const App = () => {
+const HomePage = () => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   useEffect(() => {
-    // Simulated fetching from backend
-    setTimeout(() => {
-      setImages([
-        { id: 1, title: 'NEON DREAMS', url: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&q=80&w=600', author: 'CYBER_PUNK', likes: 243 },
-        { id: 2, title: 'PIXEL VOID', url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=600', author: 'DEV_ZERO', likes: 189 },
-        { id: 3, title: 'GLITCH VIBES', url: 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80&w=600', author: 'X_RAY', likes: 452 },
-        { id: 4, title: 'SYNTH WAVE', url: 'https://images.unsplash.com/photo-1614850523296-e8c041882103?auto=format&fit=crop&q=80&w=600', author: 'RETRO_RUNNER', likes: 321 },
-        { id: 5, title: 'CODING NIGHTS', url: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&q=80&w=600', author: 'SCRIPT_MASTER', likes: 890 },
-        { id: 6, title: 'FUTURE CITY', url: 'https://images.unsplash.com/photo-1515879218367-8466d910aaa4?auto=format&fit=crop&q=80&w=600', author: 'CITY_ZEN', likes: 112 },
-      ]);
-      setLoading(false);
-    }, 1200);
+    const fetchImages = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/api/images');
+        setImages(response.data);
+      } catch (err) {
+        console.error('System Error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchImages();
   }, []);
 
   const cardVariants = {
@@ -43,13 +45,15 @@ const App = () => {
   return (
     <div className="app-main">
       <nav className="navbar">
-        <motion.div 
-          className="logo"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          SNAP_SHARE
-        </motion.div>
+        <Link to="/" style={{ textDecoration: 'none' }}>
+          <motion.div 
+            className="logo"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            SNAP_SHARE
+          </motion.div>
+        </Link>
         
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', borderRadius: '24px', padding: '0.4rem 1rem', border: '1px solid var(--glass-border)' }}>
@@ -130,9 +134,9 @@ const App = () => {
            ) : (
              <div className="grid-container">
                <AnimatePresence>
-                 {images.map((img, i) => (
+                 {(images.length > 0 ? images : []).map((img, i) => (
                    <motion.div
-                     key={img.id}
+                     key={img._id || i}
                      className="glass-card image-card"
                      custom={i}
                      variants={cardVariants}
@@ -142,14 +146,16 @@ const App = () => {
                      style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}
                    >
                      <div style={{ overflow: 'hidden', height: '300px' }}>
-                        <motion.img 
-                          src={img.url} 
-                          alt={img.title} 
-                          loading="lazy"
-                          whileHover={{ scale: 1.1 }}
-                          transition={{ duration: 0.5 }}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
+                        <Link to={`/gallery/${img.uniqueId}`}>
+                          <motion.img 
+                            src={img.imageUrl} 
+                            alt={img.title} 
+                            loading="lazy"
+                            whileHover={{ scale: 1.1 }}
+                            transition={{ duration: 0.5 }}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                        </Link>
                      </div>
                      <div style={{ padding: '1.5rem' }}>
                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -172,9 +178,11 @@ const App = () => {
                             <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn">
                               <Share2 size={16} />
                             </motion.button>
-                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn">
-                              <ImageIcon size={16} />
-                            </motion.button>
+                            <Link to={`/gallery/${img.uniqueId}`}>
+                              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn">
+                                <ImageIcon size={16} />
+                              </motion.button>
+                            </Link>
                           </div>
                        </div>
                      </div>
@@ -234,6 +242,17 @@ const App = () => {
 
       <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </div>
+  );
+};
+
+const App = () => {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/gallery/:id" element={<GalleryPage />} />
+      </Routes>
+    </Router>
   );
 };
 
