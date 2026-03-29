@@ -12,6 +12,7 @@ import axios from 'axios';
 const HomePage = () => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [zipping, setZipping] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -33,6 +34,18 @@ const HomePage = () => {
   const openPreview = (img) => {
     setSelectedImage(img);
     setIsPreviewOpen(true);
+  };
+
+  const handleDownloadAll = async () => {
+     setZipping(true);
+     try {
+        window.location.href = 'http://localhost:5000/api/download-all';
+        // Give it a few seconds to let the response start
+        setTimeout(() => setZipping(false), 3000);
+     } catch (err) {
+        console.error('ZIP Error:', err);
+        setZipping(false);
+     }
   };
 
   const breakpointColumnsObj = {
@@ -97,6 +110,12 @@ const HomePage = () => {
             A futuristic vision of image sharing. Built for the modern web with high-fidelity glassmorphism and smooth pixel interactions.
           </motion.p>
           
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '4rem' }}>
+             <RippleButton onClick={handleDownloadAll} disabled={zipping} style={{ padding: '1.2rem 2.5rem', fontSize: '0.9rem', minWidth: '240px' }}>
+                {zipping ? 'PREPARING_ZIP...' : 'DOWNLOAD_ALL_DATA'}
+             </RippleButton>
+          </div>
+
           <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem' }}>
              {[Zap, ImageIcon, LayoutGrid, Github].map((Icon, idx) => (
                <motion.div

@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
+import archiver from 'archiver';
+import axios from 'axios';
 
 dotenv.config();
 
@@ -55,6 +57,51 @@ app.get('/api/gallery/:id', async (req, res) => {
     const image = await Image.findOne({ uniqueId: req.params.id });
     if (!image) return res.status(404).json({ error: 'Gallery not found' });
     res.json(image);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/download-all', async (req, res) => {
+  try {
+    const images = await Image.find();
+    if (!images || images.length === 0) return res.status(404).send('No images found');
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    res.attachment(`snapshare-gallery-${Date.now()}.zip`);
+
+    archive.pipe(res);
+
+    for (const img of images) {
+      try {
+        const response = await axios({
+          url: img.imageUrl,
+          method: 'GET',
+          responseType: 'stream'
+        });
+        const filename = `${img.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${img.uniqueId}.jpg`;
+        archive.append(response.data, { name: filename });
+      } catch (err) {
+        console.error(`Error adding image ${img.imageUrl} to zip:`, err.message);
+      }
+    }
+
+    archive.finalize();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/proxy-download', async (req, res) => {
+  try {
+    const { url, filename } = req.query;
+    const response = await axios({
+      url: url,
+      method: 'GET',
+      responseType: 'stream'
+    });
+    res.attachment(filename || 'download.jpg');
+    response.data.pipe(res);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

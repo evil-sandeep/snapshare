@@ -91,7 +91,10 @@ const ImagePreviewModal = ({ isOpen, image, onClose }) => {
 
             <div style={{ marginTop: '2.5rem' }}>
               <RippleButton 
-                onClick={() => window.open(image.imageUrl, '_blank')}
+                onClick={() => {
+                  const filename = `${image.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${image.uniqueId}.jpg`;
+                  window.location.href = `http://localhost:5000/api/proxy-download?url=${encodeURIComponent(image.imageUrl)}&filename=${filename}`;
+                }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', padding: '1.2rem' }}
               >
                 <Download size={20} /> INITIALIZE_DOWNLOAD
