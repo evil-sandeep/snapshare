@@ -1,6 +1,10 @@
 {
   "name": "snapshare",
   "version": "1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/evil-sandeep/snapshare.git"
+  },
   "scripts": {
     "start": "concurrently \"cd backend && npm run dev\" \"cd client && npm run dev\"",
     "install-all": "cd backend && npm install && cd ../client && npm install"
