@@ -11,6 +11,7 @@ import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 import bcrypt from 'bcrypt';
 import cron from 'node-cron';
+import QRCode from 'qrcode';
 
 dotenv.config();
 
@@ -36,64 +37,32 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
-const imageSchema = new mongoose.Schema({
+const imageItemSchema = new mongoose.Schema({
+  url: String,
   title: String,
-  imageUrl: String,
-  author: String,
+  publicId: String
+});
+
+const gallerySchema = new mongoose.Schema({
+  title: { type: String, default: 'UNTITLED_COLLECTION' },
+  author: { type: String, default: 'ANONYMOUS' },
   uniqueId: { type: String, unique: true },
-  likes: { type: Number, default: 0 },
+  images: [imageItemSchema],
+  password: { type: String, default: null },
+  expiresAt: { type: Date, default: null },
   views: { type: Number, default: 0 },
   downloads: { type: Number, default: 0 },
-  password: { type: String, default: null }, // Hashed password
-  expiresAt: { type: Date, default: null },   // Expiry date
-  autoDelete: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 });
 
-const Image = mongoose.model('Image', imageSchema);
+const Gallery = mongoose.model('Gallery', gallerySchema);
+const Image = mongoose.model('Image', imageSchema); // Keep single image for feed if needed
 
-// AUTO-DELETE CRON JOB (Runs every hour)
-cron.schedule('0 * * * *', async () => {
-  try {
-    const now = new Date();
-    const expired = await Image.find({ expiresAt: { $lte: now } });
-    
-    for (const img of expired) {
-       // Optional: Delete from Cloudinary here if needed
-       // await cloudinary.uploader.destroy(publicId);
-       await Image.findByIdAndDelete(img._id);
-       console.log(`DELETED_EXPIRED_DATA: ${img.uniqueId}`);
-    }
-  } catch (err) {
-    console.error('CRON_FAILURE:', err);
-  }
-});
-
-// Database Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('MongoDB Error:', err));
-
-// Existing image feed
-app.get('/api/images', async (req, res) => {
-  try {
-    const images = await Image.find().sort({ createdAt: -1 });
-    // Don't leak passwords or expiry details on public feed
-    const sanitized = images.map(img => ({
-       ...img._doc,
-       hasPassword: !!img.password
-    }));
-    res.json(sanitized);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// REAL IMAGE UPLOAD ENTRANCE
-app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
+// REAL MULTI-IMAGE UPLOAD ENTRANCE
+app.post('/api/upload-gallery', upload.array('images', 30), async (req, res) => {
   try {
     const { title, author, password, expiryHours } = req.body;
-    if (!req.file) return res.status(400).json({ error: 'No image provided' });
+    if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files provided' });
 
     const uniqueId = Math.random().toString(36).substring(2, 10);
     
@@ -108,18 +77,32 @@ app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
        expiresAt.setHours(expiresAt.getHours() + parseInt(expiryHours));
     }
 
-    const newImage = new Image({
-      title: title || 'UNTITLED_DRIVE',
-      imageUrl: req.file.path,
+    const galleryImages = req.files.map(file => ({
+       url: file.path,
+       title: file.originalname,
+       publicId: file.filename
+    }));
+
+    const newGallery = new Gallery({
+      title: title || 'UNTITLED_COLLECTION',
       author: author || 'ANONYMOUS',
       uniqueId: uniqueId,
+      images: galleryImages,
       password: hashedPassword,
-      expiresAt: expiresAt,
-      autoDelete: !!expiresAt
+      expiresAt: expiresAt
     });
 
-    await newImage.save();
-    res.status(201).json({ uniqueId: newImage.uniqueId });
+    await newGallery.save();
+
+    // Generate QR for the direct gallery link
+    const galleryUrl = `http://localhost:5173/gallery/${uniqueId}`;
+    const qrCode = await QRCode.toDataURL(galleryUrl);
+
+    res.status(201).json({ 
+       uniqueId: newGallery.uniqueId, 
+       qrCode: qrCode,
+       link: galleryUrl
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -127,59 +110,55 @@ app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
 
 app.get('/api/gallery/:id', async (req, res) => {
   try {
-    const image = await Image.findOneAndUpdate(
+    const gallery = await Gallery.findOneAndUpdate(
        { uniqueId: req.params.id }, 
        { $inc: { views: 1 } }, 
        { new: true }
     );
-    if (!image) return res.status(404).json({ error: 'Gallery not found' });
+    if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
     
-    // Check if password protected
-    if (image.password) {
+    if (gallery.password) {
        return res.json({ 
           protected: true, 
-          uniqueId: image.uniqueId,
-          title: image.title 
+          uniqueId: gallery.uniqueId,
+          title: gallery.title 
        });
     }
 
-    res.json(image);
+    res.json(gallery);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// PASS_VERIFY_PROTOCOL
 app.post('/api/gallery/:id/verify', async (req, res) => {
   try {
      const { password } = req.body;
-     const image = await Image.findOne({ uniqueId: req.params.id });
-     
-     if (!image) return res.status(404).json({ error: 'DATA_VOID' });
-     
-     const isValid = await bcrypt.compare(password, image.password);
+     const gallery = await Gallery.findOne({ uniqueId: req.params.id });
+     if (!gallery) return res.status(404).json({ error: 'DATA_VOID' });
+     const isValid = await bcrypt.compare(password, gallery.password);
      if (!isValid) return res.status(401).json({ error: 'AUTH_FAILED' });
-     
-     res.json(image);
+     res.json(gallery);
   } catch (err) {
      res.status(500).json({ error: err.message });
   }
 });
 
-// Analytics Route
+// Stats for all galleries
 app.get('/api/stats', async (req, res) => {
   try {
-     const stats = await Image.aggregate([
+     const stats = await Gallery.aggregate([
         { 
            $group: { 
               _id: null, 
               totalViews: { $sum: "$views" }, 
               totalDownloads: { $sum: "$downloads" },
-              totalImages: { $sum: 1 }
+              totalImages: { $sum: { $size: "$images" } },
+              totalGalleries: { $sum: 1 }
            } 
         }
      ]);
-     res.json(stats[0] || { totalViews: 0, totalDownloads: 0, totalImages: 0 });
+     res.json(stats[0] || { totalViews: 0, totalDownloads: 0, totalImages: 0, totalGalleries: 0 });
   } catch (err) {
      res.status(500).json({ error: err.message });
   }
