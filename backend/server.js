@@ -47,6 +47,8 @@ const imageSchema = new mongoose.Schema({
   author: String,
   uniqueId: { type: String, unique: true },
   likes: { type: Number, default: 0 },
+  views: { type: Number, default: 0 },
+  downloads: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -71,7 +73,7 @@ app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
     const uniqueId = Math.random().toString(36).substring(2, 10);
     const newImage = new Image({
       title: title || 'UNTITLED_DRIVE',
-      imageUrl: req.file.path, // This is the Cloudinary URL
+      imageUrl: req.file.path,
       author: author || 'ANONYMOUS',
       uniqueId: uniqueId
     });
@@ -85,11 +87,45 @@ app.post('/api/upload-gallery', upload.single('image'), async (req, res) => {
 
 app.get('/api/gallery/:id', async (req, res) => {
   try {
-    const image = await Image.findOne({ uniqueId: req.params.id });
+    const image = await Image.findOneAndUpdate(
+       { uniqueId: req.params.id }, 
+       { $inc: { views: 1 } }, 
+       { new: true }
+    );
     if (!image) return res.status(404).json({ error: 'Gallery not found' });
     res.json(image);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Analytics Route
+app.get('/api/stats', async (req, res) => {
+  try {
+     const stats = await Image.aggregate([
+        { 
+           $group: { 
+              _id: null, 
+              totalViews: { $sum: "$views" }, 
+              totalDownloads: { $sum: "$downloads" },
+              totalImages: { $sum: 1 }
+           } 
+        }
+     ]);
+     res.json(stats[0] || { totalViews: 0, totalDownloads: 0, totalImages: 0 });
+  } catch (err) {
+     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/track/:id/:type', async (req, res) => {
+  try {
+     const { id, type } = req.params;
+     const field = type === 'download' ? 'downloads' : 'views';
+     await Image.findOneAndUpdate({ uniqueId: id }, { $inc: { [field]: 1 } });
+     res.sendStatus(200);
+  } catch (err) {
+     res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github, Download, Maximize2 } from 'lucide-react';
+import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github, Download, Maximize2, Eye, TrendingUp, Filter } from 'lucide-react';
 import Masonry from 'react-masonry-css';
 import RippleButton from './components/RippleButton';
 import UploadModal from './components/UploadModal';
@@ -10,26 +10,66 @@ import ImagePreviewModal from './components/ImagePreviewModal';
 import PageTransition from './components/PageTransition';
 import axios from 'axios';
 
+const Counter = ({ value }) => {
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    let start = 0;
+    const end = parseInt(value);
+    if (isNaN(end) || end <= 0) {
+       setDisplayValue(value);
+       return;
+    }
+
+    const duration = 1.5; // seconds
+    const frameRate = 1000 / 60;
+    const totalFrames = Math.round(duration * 1000 / frameRate);
+    let frame = 0;
+
+    const timer = setInterval(() => {
+       frame++;
+       const progress = frame / totalFrames;
+       const current = Math.round(end * progress);
+       
+       if (frame === totalFrames) {
+          setDisplayValue(end);
+          clearInterval(timer);
+       } else {
+          setDisplayValue(current);
+       }
+    }, frameRate);
+
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <span>{displayValue}</span>;
+};
+
 const HomePage = () => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [zipping, setZipping] = useState(false);
+  const [stats, setStats] = useState({ totalViews: 0, totalDownloads: 0, totalImages: 0 });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
-    const fetchImages = async () => {
+    const fetchData = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/images');
-        setImages(response.data);
+        const [imgsRes, statsRes] = await Promise.all([
+          axios.get('http://localhost:5000/api/images'),
+          axios.get('http://localhost:5000/api/stats')
+        ]);
+        setImages(imgsRes.data);
+        setStats(statsRes.data);
       } catch (err) {
         console.error('System Error:', err);
       } finally {
         setLoading(false);
       }
     };
-    fetchImages();
+    fetchData();
   }, []);
 
   const openPreview = (img) => {
@@ -110,20 +150,32 @@ const HomePage = () => {
             A futuristic vision of image sharing. Built for the modern web with high-fidelity glassmorphism and smooth pixel interactions.
           </motion.p>
           
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '4rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '6rem' }}>
              <RippleButton onClick={handleDownloadAll} disabled={zipping} style={{ padding: '1.2rem 2.5rem', fontSize: '0.9rem', minWidth: '240px' }}>
                 {zipping ? 'PREPARING_ZIP...' : 'DOWNLOAD_ALL_DATA'}
              </RippleButton>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '3rem' }}>
-             {[Zap, ImageIcon, LayoutGrid, Github].map((Icon, idx) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem', maxWidth: '900px', margin: '0 auto' }}>
+             {[
+               { label: 'TOTAL_VIEWS', value: stats.totalViews, icon: Eye, color: 'var(--neon-cyan)' },
+               { label: 'SOURCE_FETCHES', value: stats.totalDownloads, icon: Download, color: 'var(--neon-purple)' },
+               { label: 'DATA_GEMS', value: stats.totalImages, icon: ImageIcon, color: '#ff00ff' }
+             ].map((stat, i) => (
                <motion.div
-                 key={idx}
-                 whileHover={{ y: -10, color: '#00f3ff' }}
-                 style={{ color: '#444', transition: '0.3s', cursor: 'pointer' }}
+                 key={i}
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 transition={{ delay: 0.8 + (i * 0.1) }}
+                 className="glass-card"
+                 style={{ padding: '2rem', textAlign: 'left', position: 'relative', overflow: 'hidden' }}
                >
-                 <Icon size={32} />
+                 <div style={{ position: 'absolute', top: 0, left: 0, width: '4px', height: '100%', background: stat.color }} />
+                 <stat.icon size={20} color={stat.color} style={{ marginBottom: '1rem' }} />
+                 <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                   <Counter value={stat.value} />
+                 </div>
+                 <div style={{ fontSize: '0.65rem', color: '#555', fontFamily: 'var(--pixel-font)', letterSpacing: '2px' }}>{stat.label}</div>
                </motion.div>
              ))}
           </div>
@@ -136,8 +188,12 @@ const HomePage = () => {
                 <p style={{ fontSize: '0.8rem', color: '#555', marginTop: '0.5rem' }}>PROTOCOL: SH_FETCH_200</p>
               </div>
               <div style={{ display: 'flex', gap: '1rem' }}>
-                 <button className="icon-btn" style={{ padding: '0.8rem' }}>LATEST</button>
-                 <button className="icon-btn" style={{ padding: '0.8rem' }}>TRENDING</button>
+                 <button className="icon-btn" style={{ padding: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                   <TrendingUp size={16} /> LATEST
+                 </button>
+                 <button className="icon-btn" style={{ padding: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                   <Filter size={16} /> ENTROPY
+                 </button>
               </div>
            </div>
 
@@ -190,7 +246,11 @@ const HomePage = () => {
                                 whileTap={{ scale: 0.9 }} 
                                 className="icon-btn" 
                                 style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.5)', border: 'none', color: 'white' }}
-                                onClick={(e) => { e.stopPropagation(); window.open(img.imageUrl, '_blank'); }}
+                                onClick={async (e) => { 
+                                  e.stopPropagation(); 
+                                  window.open(img.imageUrl, '_blank');
+                                  await axios.post(`http://localhost:5000/api/track/${img.uniqueId}/download`);
+                                }}
                               >
                                 <Download size={14} />
                               </motion.button>
@@ -206,16 +266,6 @@ const HomePage = () => {
                  ))}
               </Masonry>
            )}
-        </section>
-
-        <section style={{ padding: '10rem 2rem', textAlign: 'center' }}>
-           <div className="glass-card" style={{ maxWidth: '800px', margin: '0 auto', background: 'linear-gradient(135deg, rgba(20,20,20,0.8) 0%, rgba(157, 0, 255, 0.1) 100%)', padding: '4rem' }}>
-              <h2 style={{ fontSize: '2rem', marginBottom: '1.5rem' }}>UPGRADE_SECURITY</h2>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '2.5rem' }}>Join the premium network of creators and philosophers.</p>
-              <RippleButton style={{ padding: '1.5rem 3rem', fontSize: '1rem' }}>
-                ACCESS_NETWORK_KEY
-              </RippleButton>
-           </div>
         </section>
       </main>
 
