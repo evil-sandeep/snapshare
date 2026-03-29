@@ -6,9 +6,7 @@ import multer from 'multer';
 import { v2 as cloudinary } from 'cloudinary';
 import archiver from 'archiver';
 import axios from 'axios';
-
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
-
 import bcrypt from 'bcrypt';
 import cron from 'node-cron';
 import QRCode from 'qrcode';
@@ -40,6 +38,12 @@ const storage = new CloudinaryStorage({
 
 const upload = multer({ storage: storage });
 
+// Database Connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/snapshare')
+  .then(() => console.log('MongoDB Connected'))
+  .catch(err => console.log('MongoDB Error:', err));
+
+// Schemas
 const imageItemSchema = new mongoose.Schema({
   url: String,
   title: String,
@@ -49,7 +53,7 @@ const imageItemSchema = new mongoose.Schema({
 const gallerySchema = new mongoose.Schema({
   title: { type: String, default: 'UNTITLED_COLLECTION' },
   author: { type: String, default: 'ANONYMOUS' },
-  uniqueId: { type: String, unique: true },
+  uniqueId: { type: String, unique: true, required: true },
   images: [imageItemSchema],
   password: { type: String, default: null },
   expiresAt: { type: Date, default: null },
@@ -58,21 +62,41 @@ const gallerySchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-const Gallery = mongoose.model('Gallery', gallerySchema);
-const Image = mongoose.model('Image', imageSchema); // Keep single image for feed if needed
+const imageSchema = new mongoose.Schema({
+  title: String,
+  imageUrl: String,
+  author: String,
+  uniqueId: { type: String, unique: true },
+  views: { type: Number, default: 0 },
+  downloads: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
+});
 
-// REAL MULTI-IMAGE UPLOAD ENTRANCE
+const Gallery = mongoose.model('Gallery', gallerySchema);
+const Image = mongoose.model('Image', imageSchema);
+
+// AUTO-DELETE CRON JOB
+cron.schedule('0 * * * *', async () => {
+  try {
+    const now = new Date();
+    const expiredGalleries = await Gallery.find({ expiresAt: { $lte: now } });
+    for (const gallery of expiredGalleries) {
+       await Gallery.findByIdAndDelete(gallery._id);
+       console.log(`DELETED_EXPIRED_GALLERY: ${gallery.uniqueId}`);
+    }
+  } catch (err) {
+    console.error('CRON_FAILURE:', err);
+  }
+});
+
+// Routes
 app.post('/api/upload-gallery', upload.array('images', 30), async (req, res) => {
   try {
     const { title, author, password, expiryHours } = req.body;
     if (!req.files || req.files.length === 0) return res.status(400).json({ error: 'No files provided' });
 
     const uniqueId = Math.random().toString(36).substring(2, 10);
-    
-    let hashedPassword = null;
-    if (password) {
-       hashedPassword = await bcrypt.hash(password, 10);
-    }
+    let hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
     let expiresAt = null;
     if (expiryHours) {
@@ -97,7 +121,6 @@ app.post('/api/upload-gallery', upload.array('images', 30), async (req, res) => 
 
     await newGallery.save();
 
-    // Generate QR for the direct gallery link
     const galleryUrl = `http://localhost:5173/gallery/${uniqueId}`;
     const qrCode = await QRCode.toDataURL(galleryUrl);
 
@@ -107,6 +130,7 @@ app.post('/api/upload-gallery', upload.array('images', 30), async (req, res) => 
        link: galleryUrl
     });
   } catch (err) {
+    console.error('Upload Error:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -119,15 +143,7 @@ app.get('/api/gallery/:id', async (req, res) => {
        { new: true }
     );
     if (!gallery) return res.status(404).json({ error: 'Gallery not found' });
-    
-    if (gallery.password) {
-       return res.json({ 
-          protected: true, 
-          uniqueId: gallery.uniqueId,
-          title: gallery.title 
-       });
-    }
-
+    if (gallery.password) return res.json({ protected: true, uniqueId: gallery.uniqueId, title: gallery.title });
     res.json(gallery);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -147,19 +163,10 @@ app.post('/api/gallery/:id/verify', async (req, res) => {
   }
 });
 
-// Stats for all galleries
 app.get('/api/stats', async (req, res) => {
   try {
      const stats = await Gallery.aggregate([
-        { 
-           $group: { 
-              _id: null, 
-              totalViews: { $sum: "$views" }, 
-              totalDownloads: { $sum: "$downloads" },
-              totalImages: { $sum: { $size: "$images" } },
-              totalGalleries: { $sum: 1 }
-           } 
-        }
+        { $group: { _id: null, totalViews: { $sum: "$views" }, totalDownloads: { $sum: "$downloads" }, totalImages: { $sum: { $size: "$images" } }, totalGalleries: { $sum: 1 } } }
      ]);
      res.json(stats[0] || { totalViews: 0, totalDownloads: 0, totalImages: 0, totalGalleries: 0 });
   } catch (err) {
@@ -167,55 +174,10 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-app.post('/api/track/:id/:type', async (req, res) => {
-  try {
-     const { id, type } = req.params;
-     const field = type === 'download' ? 'downloads' : 'views';
-     await Image.findOneAndUpdate({ uniqueId: id }, { $inc: { [field]: 1 } });
-     res.sendStatus(200);
-  } catch (err) {
-     res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/download-all', async (req, res) => {
-  try {
-    const images = await Image.find();
-    if (!images || images.length === 0) return res.status(404).send('No images found');
-
-    const archive = archiver('zip', { zlib: { level: 9 } });
-    res.attachment(`snapshare-gallery-${Date.now()}.zip`);
-
-    archive.pipe(res);
-
-    for (const img of images) {
-      try {
-        const response = await axios({
-          url: img.imageUrl,
-          method: 'GET',
-          responseType: 'stream'
-        });
-        const filename = `${img.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}-${img.uniqueId}.jpg`;
-        archive.append(response.data, { name: filename });
-      } catch (err) {
-        console.error(`Error adding image ${img.imageUrl} to zip:`, err.message);
-      }
-    }
-
-    archive.finalize();
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.get('/api/proxy-download', async (req, res) => {
   try {
     const { url, filename } = req.query;
-    const response = await axios({
-      url: url,
-      method: 'GET',
-      responseType: 'stream'
-    });
+    const response = await axios({ url: url, method: 'GET', responseType: 'stream' });
     res.attachment(filename || 'download.jpg');
     response.data.pipe(res);
   } catch (err) {
