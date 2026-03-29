@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github } from 'lucide-react';
+import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github, Download, Maximize2 } from 'lucide-react';
+import Masonry from 'react-masonry-css';
 import RippleButton from './components/RippleButton';
 import UploadModal from './components/UploadModal';
 import GalleryPage from './pages/GalleryPage';
+import ImagePreviewModal from './components/ImagePreviewModal';
 import axios from 'axios';
 
 const HomePage = () => {
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     const fetchImages = async () => {
@@ -26,20 +30,16 @@ const HomePage = () => {
     fetchImages();
   }, []);
 
-  const cardVariants = {
-    hidden: { opacity: 0, y: 30, scale: 0.9 },
-    visible: (i) => ({
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      transition: {
-        delay: i * 0.1,
-        duration: 0.6,
-        type: "spring",
-        stiffness: 120,
-        damping: 12
-      }
-    })
+  const openPreview = (img) => {
+    setSelectedImage(img);
+    setIsPreviewOpen(true);
+  };
+
+  const breakpointColumnsObj = {
+    default: 4,
+    1100: 3,
+    700: 2,
+    500: 1
   };
 
   return (
@@ -76,7 +76,7 @@ const HomePage = () => {
             style={{ marginBottom: '2rem' }}
           >
             <div style={{ display: 'inline-block', padding: '0.5rem 1rem', background: 'rgba(0, 243, 255, 0.1)', color: 'var(--neon-cyan)', borderRadius: '20px', fontSize: '0.7rem', fontWeight: 'bold', border: '1px solid rgba(0, 243, 255, 0.2)', marginBottom: '1rem', fontFamily: 'var(--pixel-font)' }}>
-              SYSTEM READY_V1.0
+              SYSTEM READY_V1.1
             </div>
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
@@ -132,64 +132,60 @@ const HomePage = () => {
                <p style={{ marginTop: '2rem', fontFamily: 'var(--pixel-font)', fontSize: '0.9rem', letterSpacing: '2px', color: 'var(--neon-cyan)' }}>SYNCING_PROTOCOLS...</p>
              </div>
            ) : (
-             <div className="grid-container">
-               <AnimatePresence>
+              <Masonry
+                breakpointCols={breakpointColumnsObj}
+                className="my-masonry-grid"
+                columnClassName="my-masonry-grid_column"
+              >
                  {(images.length > 0 ? images : []).map((img, i) => (
                    <motion.div
                      key={img._id || i}
-                     className="glass-card image-card"
-                     custom={i}
-                     variants={cardVariants}
-                     initial="hidden"
-                     animate="visible"
-                     whileHover={{ y: -10, boxShadow: "0 25px 50px -12px rgba(0, 243, 255, 0.4)" }}
-                     style={{ borderRadius: '24px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}
+                     initial={{ opacity: 0, scale: 0.9 }}
+                     animate={{ opacity: 1, scale: 1 }}
+                     transition={{ delay: i * 0.05, duration: 0.5 }}
+                     whileHover={{ y: -8, transition: { duration: 0.3 } }}
+                     style={{ marginBottom: '1.5rem', position: 'relative', overflow: 'hidden', borderRadius: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', cursor: 'zoom-in' }}
+                     onClick={() => openPreview(img)}
                    >
-                     <div style={{ overflow: 'hidden', height: '300px' }}>
-                        <Link to={`/gallery/${img.uniqueId}`}>
-                          <motion.img 
-                            src={img.imageUrl} 
-                            alt={img.title} 
-                            loading="lazy"
-                            whileHover={{ scale: 1.1 }}
-                            transition={{ duration: 0.5 }}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                        </Link>
-                     </div>
-                     <div style={{ padding: '1.5rem' }}>
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                         <h4 style={{ fontSize: '1.1rem', margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{img.title}</h4>
-                         <motion.div 
-                           whileHover={{ scale: 1.3 }}
-                           whileTap={{ scale: 0.7 }}
-                           style={{ cursor: 'pointer', color: '#ff00ff', display: 'flex', alignItems: 'center', gap: '5px' }}
-                         >
-                            <Heart size={18} fill="rgba(255,0,255,0.2)" />
-                            <span style={{ fontSize: '0.7rem', color: '#888', fontFamily: 'var(--pixel-font)' }}>{img.likes}</span>
-                         </motion.div>
-                       </div>
-                       
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: '#666', fontFamily: 'var(--pixel-font)' }}>
-                            @{img.author}
-                          </span>
-                          <div style={{ display: 'flex', gap: '10px' }}>
-                            <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn">
-                              <Share2 size={16} />
-                            </motion.button>
-                            <Link to={`/gallery/${img.uniqueId}`}>
-                              <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn">
-                                <ImageIcon size={16} />
+                     <motion.img 
+                        layoutId={`image-${img._id}`}
+                        src={img.imageUrl} 
+                        alt={img.title} 
+                        loading="lazy"
+                        style={{ width: '100%', display: 'block' }}
+                     />
+                     <motion.div 
+                        initial={{ opacity: 0 }}
+                        whileHover={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                        style={{ position: 'absolute', inset: 0, background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(3px)', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', padding: '1.2rem' }}
+                     >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                           <div>
+                              <h4 style={{ margin: 0, fontSize: '0.9rem', color: 'white' }}>{img.title}</h4>
+                              <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.7rem', color: '#888' }}>@{img.author}</p>
+                           </div>
+                           <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <motion.button 
+                                whileHover={{ scale: 1.1 }} 
+                                whileTap={{ scale: 0.9 }} 
+                                className="icon-btn" 
+                                style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.5)', border: 'none', color: 'white' }}
+                                onClick={(e) => { e.stopPropagation(); window.open(img.imageUrl, '_blank'); }}
+                              >
+                                <Download size={14} />
                               </motion.button>
-                            </Link>
-                          </div>
-                       </div>
-                     </div>
+                              <Link to={`/gallery/${img.uniqueId}`} onClick={(e) => e.stopPropagation()}>
+                                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} className="icon-btn" style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.5)', border: 'none', color: 'white' }}>
+                                  <Maximize2 size={14} />
+                                </motion.button>
+                              </Link>
+                           </div>
+                        </div>
+                     </motion.div>
                    </motion.div>
                  ))}
-               </AnimatePresence>
-             </div>
+              </Masonry>
            )}
         </section>
 
@@ -214,8 +210,8 @@ const HomePage = () => {
              <h4 style={{ fontSize: '0.8rem', color: '#888', marginBottom: '1.5rem' }}>SYSTEM</h4>
              <ul style={{ listStyle: 'none', color: '#555', fontSize: '0.8rem', lineHeight: '2' }}>
                <li>STATUS: ONLINE</li>
-               <li>VERSION: 4.2.0</li>
-               <li>LATENCY: 12ms</li>
+               <li>VERSION: 4.2.1</li>
+               <li>LATENCY: 8ms</li>
              </ul>
            </div>
            <div>
@@ -241,6 +237,7 @@ const HomePage = () => {
       </footer>
 
       <UploadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <ImagePreviewModal isOpen={isPreviewOpen} image={selectedImage} onClose={() => setIsPreviewOpen(false)} />
     </div>
   );
 };

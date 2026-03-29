@@ -86,6 +86,28 @@ h1, h2, h3, h4 {
   text-shadow: 0 0 5px rgba(0,0,0,0.5);
 }
 
+/* Masonry Grid */
+.my-masonry-grid {
+  display: -webkit-box; /* Not needed if autoprefixer is used */
+  display: -ms-flexbox; /* Not needed if autoprefixer is used */
+  display: flex;
+  margin-left: -1.5rem; /* gutter size offset */
+  width: auto;
+}
+.my-masonry-grid_column {
+  padding-left: 1.5rem; /* gutter size */
+  background-clip: padding-box;
+}
+
+/* Style your items */
+.my-masonry-grid_column > div {
+  margin-bottom: 1.5rem;
+}
+
+[data-framer-appear-id] {
+  transform-origin: center center;
+}
+
 .btn-primary:active {
   transform: scale(0.95);
 }
