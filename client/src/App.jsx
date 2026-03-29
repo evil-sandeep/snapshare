@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Heart, Share2, Search, Zap, LayoutGrid, Image as ImageIcon, Menu, Github, Download, Maximize2 } from 'lucide-react';
 import Masonry from 'react-masonry-css';
@@ -7,6 +7,7 @@ import RippleButton from './components/RippleButton';
 import UploadModal from './components/UploadModal';
 import GalleryPage from './pages/GalleryPage';
 import ImagePreviewModal from './components/ImagePreviewModal';
+import PageTransition from './components/PageTransition';
 import axios from 'axios';
 
 const HomePage = () => {
@@ -40,7 +41,6 @@ const HomePage = () => {
      setZipping(true);
      try {
         window.location.href = 'http://localhost:5000/api/download-all';
-        // Give it a few seconds to let the response start
         setTimeout(() => setZipping(false), 3000);
      } catch (err) {
         console.error('ZIP Error:', err);
@@ -261,13 +261,22 @@ const HomePage = () => {
   );
 };
 
+const AnimatedRoutes = () => {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<PageTransition><HomePage /></PageTransition>} />
+        <Route path="/gallery/:id" element={<PageTransition><GalleryPage /></PageTransition>} />
+      </Routes>
+    </AnimatePresence>
+  );
+};
+
 const App = () => {
   return (
     <Router>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/gallery/:id" element={<GalleryPage />} />
-      </Routes>
+      <AnimatedRoutes />
     </Router>
   );
 };
